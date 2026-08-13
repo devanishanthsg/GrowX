@@ -1,53 +1,60 @@
 import { useState } from "react";
-import {
-  Link,
-  useNavigate,
-} from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { login } from "../api/authApi.js";
+import { useAuth } from "../hooks/useAuth.js";
+import { validateLogin } from "../utils/validators.js";
 
 function Login() {
   const navigate = useNavigate();
+  const { loginSuccess } = useAuth();
 
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   });
 
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState({});
+  const [apiError, setApiError] = useState("");
+  const [loading, setLoading] = useState(false);
 
   function handleChange(event) {
     const { name, value } = event.target;
-
-    setFormData((previousData) => ({
-      ...previousData,
-      [name]: value,
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    // Clear field error on change
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: "" }));
+    }
+    setApiError("");
   }
 
-    function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault();
-    setError("");
 
-    const email = formData.email.trim();
-    const password = formData.password.trim();
-
-    if (!email || !password) {
-      setError("Please enter your email and password.");
+    // Frontend validation
+    const validationErrors = validateLogin(formData);
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
       return;
     }
 
-    const user = {
-      name: "GrowX Farmer",
-      email,
-      farmName: "Green Valley Farm",
-      location: "Tamil Nadu",
-    };
+    setLoading(true);
+    setApiError("");
 
-    localStorage.setItem(
-      "growx-user",
-      JSON.stringify(user)
-    );
+    try {
+      const authData = await login({
+        email: formData.email.trim(),
+        password: formData.password,
+      });
 
-    navigate("/dashboard");
+      await loginSuccess(authData);
+      navigate("/dashboard", { replace: true });
+    } catch (error) {
+      setApiError(
+        error.message ?? "Login failed. Please check your credentials.",
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -78,59 +85,65 @@ function Login() {
         <form
           className="auth-form"
           onSubmit={handleSubmit}
+          noValidate
         >
           <div className="auth-form-heading">
             <h2>Welcome back</h2>
             <p>Sign in to your GrowX account.</p>
           </div>
 
-          {error && (
-            <p className="form-error">{error}</p>
+          {apiError && (
+            <p className="form-error">{apiError}</p>
           )}
 
           <label>
             Email address
-
             <input
               type="email"
               name="email"
+              id="login-email"
               placeholder="farmer@example.com"
               value={formData.email}
               onChange={handleChange}
+              disabled={loading}
+              autoComplete="email"
             />
+            {errors.email && (
+              <span className="field-error">{errors.email}</span>
+            )}
           </label>
 
           <label>
             Password
-
             <input
               type="password"
               name="password"
+              id="login-password"
               placeholder="Enter your password"
               value={formData.password}
               onChange={handleChange}
+              disabled={loading}
+              autoComplete="current-password"
             />
+            {errors.password && (
+              <span className="field-error">{errors.password}</span>
+            )}
           </label>
-
-          <div className="form-options">
-            <label className="remember-option">
-              <input type="checkbox" />
-              Remember me
-            </label>
-
-            <button
-              className="text-button"
-              type="button"
-            >
-              Forgot password?
-            </button>
-          </div>
 
           <button
             type="submit"
             className="full-primary-button"
+            id="login-submit"
+            disabled={loading}
           >
-            Login
+            {loading ? (
+              <>
+                <span className="inline-spinner" />
+                Signing in…
+              </>
+            ) : (
+              "Login"
+            )}
           </button>
 
           <p className="auth-switch">

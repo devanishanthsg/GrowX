@@ -1,7 +1,5 @@
-import {
-  NavLink,
-  useNavigate,
-} from "react-router-dom";
+import { NavLink } from "react-router-dom";
+import { useAuth } from "../hooks/useAuth.js";
 
 const menuItems = [
   {
@@ -37,12 +35,7 @@ const menuItems = [
 ];
 
 function Sidebar() {
-  const navigate = useNavigate();
-
-  function handleLogout() {
-    localStorage.removeItem("growx-user");
-    navigate("/login", { replace: true });
-  }
+  const { logout } = useAuth();
 
   return (
     <aside className="sidebar">
@@ -75,7 +68,7 @@ function Sidebar() {
       <button
         type="button"
         className="logout-button"
-        onClick={handleLogout}
+        onClick={logout}
       >
         <span>🚪</span>
         Logout

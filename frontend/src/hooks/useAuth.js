@@ -1,0 +1,19 @@
+/**
+ * useAuth.js
+ * Convenience hook that consumes AuthContext.
+ * Use this in any component that needs auth state or actions.
+ *
+ * Usage:
+ *   const { user, currentFarm, isAuthenticated, logout } = useAuth();
+ */
+
+import { useContext } from "react";
+import { AuthContext } from "../context/AuthContext.jsx";
+
+export function useAuth() {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+  return context;
+}
