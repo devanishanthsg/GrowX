@@ -1,0 +1,39 @@
+# GrowX Backend — .gitignore
+
+# ── Maven build output ─────────────────────────────────────────────────────────
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# ── Uploaded files (disease detection images) ─────────────────────────────────
+uploads/
+
+# ── IDE files ─────────────────────────────────────────────────────────────────
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+*.classpath
+*.project
+.settings/
+
+# ── Environment & secrets ─────────────────────────────────────────────────────
+# NEVER commit actual credentials or API keys.
+# Use environment variables or a secrets manager instead.
+.env
+.env.local
+.env.*.local
+*.env
+
+# ── OS files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ── Spring Boot devtools ──────────────────────────────────────────────────────
+spring-devtools.properties
