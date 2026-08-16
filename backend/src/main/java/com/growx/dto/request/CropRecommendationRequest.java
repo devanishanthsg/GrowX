@@ -2,15 +2,13 @@ package com.growx.dto.request;
 
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.math.BigDecimal;
 
-/**
- * Request body for POST /api/crop-recommendation.
- * Matches the 7 form fields on the Crop Recommendation page.
- */
 @Data
 public class CropRecommendationRequest {
 
@@ -45,10 +43,19 @@ public class CropRecommendationRequest {
     @DecimalMin(value = "0", message = "Rainfall must be a positive value")
     private BigDecimal rainfall;
 
-    /**
-     * The farm this recommendation is associated with.
-     * Required to store the result and link it to the correct farm.
-     */
     @NotNull(message = "Farm ID is required")
     private Long farmId;
+
+    /*
+     * Intended sowing month.
+     *
+     * 1  = January
+     * 2  = February
+     * ...
+     * 12 = December
+     */
+    @NotNull(message = "Sowing month is required")
+    @Min(value = 1, message = "Sowing month must be between 1 and 12")
+    @Max(value = 12, message = "Sowing month must be between 1 and 12")
+    private Integer sowingMonth;
 }
