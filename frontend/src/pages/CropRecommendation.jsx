@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "../hooks/useAuth.js";
 import { submitRecommendation } from "../api/cropApi.js";
 import { validateCropForm } from "../utils/validators.js";
+import "../styles/cropRecommendationV2.css";
 
 const initialForm = {
   nitrogen: "",
@@ -13,6 +14,462 @@ const initialForm = {
   rainfall: "",
   sowingMonth: "",
 };
+
+const FEATURE_LABELS = {
+  N: "Nitrogen",
+  P: "Phosphorus",
+  K: "Potassium",
+  temperature: "Temperature",
+  humidity: "Humidity",
+  ph: "Soil pH",
+  rainfall: "Rainfall",
+};
+
+function formatStatus(value) {
+  if (!value) return "";
+
+  return String(value)
+    .toLowerCase()
+    .split("_")
+    .map(
+      (word) =>
+        word.charAt(0).toUpperCase() + word.slice(1),
+    )
+    .join(" ");
+}
+
+function formatScore(value) {
+  const number = Number(value);
+
+  if (!Number.isFinite(number)) {
+    return "—";
+  }
+
+  return `${number.toFixed(1)}%`;
+}
+
+function getSeasonDisplay(result) {
+  if (result.season) {
+    return {
+      value: result.season,
+      status:
+        result.seasonStatus === "VERIFIED"
+          ? "Verified"
+          : formatStatus(result.seasonStatus),
+    };
+  }
+
+  return {
+    value: "Not available",
+    status:
+      formatStatus(result.seasonStatus) ||
+      "Unavailable",
+  };
+}
+
+function getYieldDisplay(result) {
+  if (result.expectedYield) {
+    return {
+      value: result.expectedYield,
+      status:
+        result.yieldStatus === "REFERENCE_AVAILABLE"
+          ? "Reference available"
+          : formatStatus(result.yieldStatus),
+    };
+  }
+
+  return {
+    value: "Not available",
+    status:
+      formatStatus(result.yieldStatus) ||
+      "Unavailable",
+  };
+}
+
+function CandidateList({
+  candidates = [],
+  approvedCrop = null,
+  rankOffset = 0,
+}) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return null;
+  }
+
+  const hasApprovedCrop = Boolean(approvedCrop);
+
+  return (
+    <div className="crop-v2-candidate-section">
+      <div className="crop-v2-section-heading">
+        <div>
+          <span className="crop-v2-eyebrow">
+            MODEL RANKING
+          </span>
+
+          <h3>
+            {hasApprovedCrop
+              ? "Other model candidates"
+              : "Possible candidates"}
+          </h3>
+        </div>
+
+        <span className="crop-v2-reference-badge">
+          Reference only
+        </span>
+      </div>
+
+      <p className="crop-v2-section-description">
+        {hasApprovedCrop
+          ? `${approvedCrop} is the approved recommendation. These lower-ranked candidates are shown only for comparison.`
+          : "These are the model's highest scores. They are not approved crop recommendations for this input."}
+      </p>
+
+      <div className="crop-v2-candidate-list">
+        {candidates.map((candidate, index) => (
+          <div
+            className="crop-v2-candidate-row"
+            key={`${candidate.crop}-${index}`}
+          >
+            <div className="crop-v2-candidate-rank">
+              {index + 1 + rankOffset}
+            </div>
+
+            <div className="crop-v2-candidate-main">
+              <div className="crop-v2-candidate-name">
+                {candidate.crop || "Unknown"}
+              </div>
+
+              {!hasApprovedCrop && index === 0 && (
+                <span className="crop-v2-top-candidate-note">
+                  Highest model score
+                </span>
+              )}
+            </div>
+
+            <strong className="crop-v2-candidate-score">
+              {formatScore(candidate.confidence)}
+            </strong>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReliableRecommendation({ result, onReset }) {
+  const seasonDisplay = getSeasonDisplay(result);
+  const yieldDisplay = getYieldDisplay(result);
+
+  return (
+    <div className="crop-v2-result-content">
+      <div className="crop-v2-result-header">
+        <p className="result-label">
+          RECOMMENDED CROP
+        </p>
+
+        <span className="crop-v2-reliability-badge crop-v2-reliability-good">
+          Reliable recommendation
+        </span>
+      </div>
+
+      <div className="crop-result-icon">
+        🌾
+      </div>
+
+      <h2 className="recommended-crop-name">
+        {result.recommendedCrop}
+      </h2>
+
+      {result.recommendationMessage && (
+        <p className="crop-v2-primary-message">
+          {result.recommendationMessage}
+        </p>
+      )}
+
+      {result.confidence != null && (
+        <div className="confidence crop-v2-confidence">
+          <div>
+            <span>Model score</span>
+
+            <strong>
+              {formatScore(result.confidence)}
+            </strong>
+          </div>
+
+          <div className="confidence-track">
+            <div
+              className="confidence-fill"
+              style={{
+                width: `${Math.min(
+                  Math.max(
+                    Number(result.confidence) || 0,
+                    0,
+                  ),
+                  100,
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {result.reliabilityMessage && (
+        <div className="crop-v2-reliability-note crop-v2-note-good">
+          <strong>Reliability check passed</strong>
+          <p>{result.reliabilityMessage}</p>
+        </div>
+      )}
+
+      <div className="result-information crop-v2-info-grid">
+        <div>
+          <span>Suitable season</span>
+          <strong>{seasonDisplay.value}</strong>
+          <small>{seasonDisplay.status}</small>
+        </div>
+
+        <div>
+          <span>Expected yield reference</span>
+          <strong>{yieldDisplay.value}</strong>
+          <small>{yieldDisplay.status}</small>
+        </div>
+
+        <div>
+          <span>Model domain</span>
+          <strong>
+            {formatStatus(result.domainStatus) ||
+              "Not reported"}
+          </strong>
+
+          {result.domainScore != null && (
+            <small>
+              Domain score: {Number(result.domainScore).toFixed(3)}
+            </small>
+          )}
+        </div>
+
+        <div>
+          <span>Model version</span>
+          <strong>
+            {result.modelVersion || "Not reported"}
+          </strong>
+
+          {result.confidenceMargin != null && (
+            <small>
+              Confidence margin:{" "}
+              {formatScore(result.confidenceMargin)}
+            </small>
+          )}
+        </div>
+      </div>
+
+      {result.seasonMessage && (
+        <div className="result-note">
+          <strong>Season information:</strong>{" "}
+          {result.seasonMessage}
+        </div>
+      )}
+
+      {result.yieldMessage && (
+        <div className="result-note">
+          <strong>Yield information:</strong>{" "}
+          {result.yieldMessage}
+        </div>
+      )}
+
+      {result.explanation && (
+        <div className="result-explanation">
+          <h3>Why this crop?</h3>
+          <p>{result.explanation}</p>
+        </div>
+      )}
+
+      <CandidateList
+        candidates={
+          Array.isArray(result.candidates)
+            ? result.candidates.slice(1)
+            : Array.isArray(result.alternatives)
+              ? result.alternatives
+              : []
+        }
+        approvedCrop={result.recommendedCrop}
+        rankOffset={1}
+      />
+
+      {result.expectedYield && (
+        <div className="result-note">
+          <strong>Important:</strong>{" "}
+          The yield value shown is a reference range,
+          not a guaranteed harvest. Actual yield can vary
+          with crop variety, irrigation, fertilizer, soil
+          condition, pests, diseases and farm management.
+        </div>
+      )}
+
+      <div className="result-actions">
+        <button
+          type="button"
+          className="outline-button"
+          onClick={onReset}
+        >
+          Try Another Recommendation
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UnreliableRecommendation({ result, onReset }) {
+  const candidates =
+    Array.isArray(result.candidates) &&
+    result.candidates.length > 0
+      ? result.candidates
+      : result.topCandidate
+        ? [
+            result.topCandidate,
+            ...(Array.isArray(result.alternatives)
+              ? result.alternatives
+              : []),
+          ]
+        : [];
+
+  const outsideFeatures =
+    Array.isArray(result.domainOutsideFeatures)
+      ? result.domainOutsideFeatures
+      : [];
+
+  const isOutOfDistribution =
+    result.reliabilityStatus === "OUT_OF_DISTRIBUTION" ||
+    result.domainStatus === "OUT_OF_DISTRIBUTION";
+
+  return (
+    <div className="crop-v2-result-content crop-v2-unreliable">
+      <div className="crop-v2-result-header">
+        <p className="result-label">
+          AI RELIABILITY CHECK
+        </p>
+
+        <span className="crop-v2-reliability-badge crop-v2-reliability-warning">
+          {isOutOfDistribution
+            ? "Outside reliable model range"
+            : "Recommendation withheld"}
+        </span>
+      </div>
+
+      <div
+        className="crop-v2-warning-icon"
+        aria-hidden="true"
+      >
+        !
+      </div>
+
+      <h2 className="crop-v2-unavailable-title">
+        No reliable recommendation
+      </h2>
+
+      <p className="crop-v2-unavailable-message">
+        {result.recommendationMessage ||
+          "GrowX could not issue a sufficiently reliable crop recommendation for these conditions."}
+      </p>
+
+      {result.reliabilityMessage && (
+        <div className="crop-v2-reliability-note crop-v2-note-warning">
+          <strong>
+            {isOutOfDistribution
+              ? "Why GrowX withheld the recommendation"
+              : "Reliability check"}
+          </strong>
+
+          <p>{result.reliabilityMessage}</p>
+        </div>
+      )}
+
+      {outsideFeatures.length > 0 && (
+        <div className="crop-v2-domain-section">
+          <span className="crop-v2-domain-label">
+            Values outside the model&apos;s observed training range
+          </span>
+
+          <div className="crop-v2-feature-tags">
+            {outsideFeatures.map((feature) => (
+              <span key={feature}>
+                {FEATURE_LABELS[feature] || feature}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <CandidateList candidates={candidates} />
+
+      {result.explanation && (
+        <div className="crop-v2-explanation-warning">
+          <strong>Model interpretation</strong>
+          <p>{result.explanation}</p>
+        </div>
+      )}
+
+      <div className="crop-v2-unreliable-meta">
+        <div>
+          <span>Reliability status</span>
+          <strong>
+            {formatStatus(result.reliabilityStatus) ||
+              "Not reliable"}
+          </strong>
+        </div>
+
+        <div>
+          <span>Model domain</span>
+          <strong>
+            {formatStatus(result.domainStatus) ||
+              "Not reported"}
+          </strong>
+        </div>
+
+        {result.domainScore != null && (
+          <div>
+            <span>Domain score</span>
+            <strong>
+              {Number(result.domainScore).toFixed(3)}
+            </strong>
+          </div>
+        )}
+
+        {result.modelVersion && (
+          <div>
+            <span>Model version</span>
+            <strong>{result.modelVersion}</strong>
+          </div>
+        )}
+      </div>
+
+      <div className="crop-v2-skipped-note">
+        <strong>
+          Season and yield were intentionally not estimated.
+        </strong>
+
+        <p>
+          GrowX only provides those details after a crop
+          recommendation passes the reliability gate.
+        </p>
+      </div>
+
+      {result.id && (
+        <p className="crop-v2-request-id">
+          Request ID: #{result.id}
+        </p>
+      )}
+
+      <div className="result-actions">
+        <button
+          type="button"
+          className="outline-button"
+          onClick={onReset}
+        >
+          Review Inputs
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function CropRecommendation() {
   const { currentFarm } = useAuth();
@@ -44,11 +501,6 @@ function CropRecommendation() {
   async function handleSubmit(event) {
     event.preventDefault();
 
-    // Clear previous recommendation immediately
-    // so stale results are never shown for new invalid inputs.
-    setResult(null);
-    setApiError("");
-
     if (!currentFarm) {
       setApiError(
         "No farm found for your account. Please complete your farm profile first.",
@@ -63,8 +515,9 @@ function CropRecommendation() {
       return;
     }
 
-    setFieldErrors({});
     setLoading(true);
+    setApiError("");
+    setResult(null);
 
     try {
       const data = await submitRecommendation({
@@ -103,114 +556,16 @@ function CropRecommendation() {
 
   function FieldError({ name }) {
     return fieldErrors[name] ? (
-      <span className="field-error">{fieldErrors[name]}</span>
+      <span className="field-error">
+        {fieldErrors[name]}
+      </span>
     ) : null;
   }
 
-  function getConfidenceInfo(confidence) {
-    const value = Number(confidence);
-
-    if (!Number.isFinite(value)) {
-      return {
-        label: "Unknown confidence",
-        className: "confidence-unknown",
-        message:
-          "The AI service did not return a valid confidence score.",
-      };
-    }
-
-    if (value >= 70) {
-      return {
-        label: "High confidence",
-        className: "confidence-high",
-        message:
-          "The model has strong confidence in this crop recommendation.",
-      };
-    }
-
-    if (value >= 50) {
-      return {
-        label: "Moderate confidence",
-        className: "confidence-medium",
-        message:
-          "The recommendation is reasonably supported, but other crops may also be suitable.",
-      };
-    }
-
-    return {
-      label: "Low confidence",
-      className: "confidence-low",
-      message:
-        "The model is uncertain about this recommendation. Review the input values before making a planting decision.",
-    };
-  }
-
-  function formatStatus(value) {
-    if (!value) return "";
-
-    return value
-      .toLowerCase()
-      .split("_")
-      .map(
-        (word) =>
-          word.charAt(0).toUpperCase() +
-          word.slice(1),
-      )
-      .join(" ");
-  }
-
-  function getSeasonDisplay(result) {
-    if (result.season) {
-      return {
-        value: result.season,
-        status:
-          result.seasonStatus === "VERIFIED"
-            ? "Verified"
-            : formatStatus(result.seasonStatus),
-      };
-    }
-
-    return {
-      value: "Not verified",
-      status:
-        formatStatus(result.seasonStatus) ||
-        "Unavailable",
-    };
-  }
-
-  function getYieldDisplay(result) {
-    if (result.expectedYield) {
-      return {
-        value: result.expectedYield,
-        status:
-          result.yieldStatus === "REFERENCE_AVAILABLE"
-            ? "Reference available"
-            : formatStatus(result.yieldStatus),
-      };
-    }
-
-    return {
-      value: "Unavailable",
-      status:
-        formatStatus(result.yieldStatus) ||
-        "Unavailable",
-    };
-  }
-
-  const confidenceInfo =
-    result?.confidence != null
-      ? getConfidenceInfo(result.confidence)
-      : null;
-
-  const seasonDisplay =
-    result?.recommendedCrop
-      ? getSeasonDisplay(result)
-      : null;
-
-  const yieldDisplay =
-    result?.recommendedCrop
-      ? getYieldDisplay(result)
-      : null;
+  const hasReliableRecommendation =
+    result != null &&
+    result.recommendationAvailable === true &&
+    Boolean(result.recommendedCrop);
 
   return (
     <div>
@@ -229,8 +584,8 @@ function CropRecommendation() {
 
       {!currentFarm && (
         <p className="page-error">
-          ⚠️ No farm linked to your account. Please update your Farm
-          Profile before using this tool.
+          ⚠️ No farm linked to your account. Please update your
+          Farm Profile before using this tool.
         </p>
       )}
 
@@ -256,32 +611,9 @@ function CropRecommendation() {
           )}
 
           {currentFarm && (
-            <div
-              className="farm-context-card"
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "repeat(2, minmax(0, 1fr))",
-                gap: "14px",
-                padding: "14px 16px",
-                marginBottom: "18px",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "4px",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "12px",
-                    opacity: 0.7,
-                  }}
-                >
-                  Selected farm
-                </span>
+            <div className="farm-context-card">
+              <div>
+                <span>Selected farm</span>
 
                 <strong>
                   {currentFarm.farmName}
@@ -289,21 +621,8 @@ function CropRecommendation() {
               </div>
 
               {currentFarm.location && (
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "4px",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "12px",
-                      opacity: 0.7,
-                    }}
-                  >
-                    Location
-                  </span>
+                <div>
+                  <span>Location</span>
 
                   <strong>
                     {currentFarm.location}
@@ -413,8 +732,8 @@ function CropRecommendation() {
                 onChange={handleChange}
                 placeholder="Example: 6.5"
                 disabled={loading}
-                min="2.5"
-                max="11"
+                min="0"
+                max="14"
               />
 
               <FieldError name="ph" />
@@ -433,7 +752,6 @@ function CropRecommendation() {
                 placeholder="Example: 202.9"
                 disabled={loading}
                 min="0"
-                max="500"
               />
 
               <FieldError name="rainfall" />
@@ -449,10 +767,7 @@ function CropRecommendation() {
                 onChange={handleChange}
                 disabled={loading}
               >
-                <option value="">
-                  Select month
-                </option>
-
+                <option value="">Select month</option>
                 <option value="1">January</option>
                 <option value="2">February</option>
                 <option value="3">March</option>
@@ -524,280 +839,16 @@ function CropRecommendation() {
                 Recommendation.
               </p>
             </div>
-          ) : result.recommendedCrop ? (
-            <div>
-              <p className="result-label">
-                RECOMMENDED CROP
-              </p>
-
-              <div className="crop-result-icon">
-                🌾
-              </div>
-
-              <h2 className="recommended-crop-name">
-                {result.recommendedCrop}
-              </h2>
-
-              {result.confidence != null && (
-                <>
-                  <div className="confidence">
-                    <div>
-                      <span>AI confidence</span>
-
-                      <strong>
-                        {Number(
-                          result.confidence,
-                        ).toFixed(1)}
-                        %
-                      </strong>
-                    </div>
-
-                    <div className="confidence-track">
-                      <div
-                        className="confidence-fill"
-                        style={{
-                          width: `${Math.min(
-                            Math.max(
-                              Number(result.confidence),
-                              0,
-                            ),
-                            100,
-                          )}%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-
-                  {confidenceInfo && (
-                    <div
-                      className={`confidence-status ${confidenceInfo.className}`}
-                      style={{
-                        marginTop: "12px",
-                        marginBottom: "18px",
-                      }}
-                    >
-                      <strong>
-                        {confidenceInfo.label}
-                      </strong>
-
-                      <p>
-                        {confidenceInfo.message}
-                      </p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              <div
-                className="result-information"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "repeat(2, minmax(0, 1fr))",
-                  gap: "12px",
-                }}
-              >
-                <div>
-                  <span>
-                    Suitable season
-                  </span>
-
-                  <strong>
-                    {seasonDisplay?.value}
-                  </strong>
-
-                  <small>
-                    {seasonDisplay?.status}
-                  </small>
-                </div>
-
-                <div>
-                  <span>
-                    Expected yield
-                  </span>
-
-                  <strong>
-                    {yieldDisplay?.value}
-                  </strong>
-
-                  <small>
-                    {yieldDisplay?.status}
-                  </small>
-                </div>
-
-                {result.status && (
-                  <div>
-                    <span>
-                      Analysis status
-                    </span>
-
-                    <strong>
-                      {formatStatus(result.status)}
-                    </strong>
-                  </div>
-                )}
-
-                {result.modelVersion && (
-                  <div>
-                    <span>
-                      Model version
-                    </span>
-
-                    <strong>
-                      {result.modelVersion}
-                    </strong>
-                  </div>
-                )}
-              </div>
-
-              {(result.seasonMessage ||
-                result.yieldMessage) && (
-                <div
-                  style={{
-                    display: "grid",
-                    gap: "10px",
-                    marginTop: "16px",
-                  }}
-                >
-                  {result.seasonMessage && (
-                    <div
-                      className="result-note"
-                      style={{
-                        padding: "12px 14px",
-                        borderRadius: "10px",
-                      }}
-                    >
-                      <strong>
-                        🌱 Season information
-                      </strong>
-
-                      <p
-                        style={{
-                          margin: "6px 0 0",
-                        }}
-                      >
-                        {result.seasonMessage}
-                      </p>
-                    </div>
-                  )}
-
-                  {result.yieldMessage && (
-                    <div
-                      className="result-note"
-                      style={{
-                        padding: "12px 14px",
-                        borderRadius: "10px",
-                      }}
-                    >
-                      <strong>
-                        📈 Yield information
-                      </strong>
-
-                      <p
-                        style={{
-                          margin: "6px 0 0",
-                        }}
-                      >
-                        {result.yieldMessage}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {result.explanation && (
-                <div
-                  className="result-explanation"
-                  style={{
-                    marginTop: "16px",
-                  }}
-                >
-                  <h3>
-                    Why this crop?
-                  </h3>
-
-                  <p>
-                    {result.explanation}
-                  </p>
-                </div>
-              )}
-
-              {result.expectedYield && (
-                <div
-                  className="result-note"
-                  style={{
-                    marginTop: "12px",
-                  }}
-                >
-                  <strong>
-                    Important:
-                  </strong>{" "}
-                  This yield is a reference range, not a
-                  guaranteed harvest. Actual yield can vary
-                  with variety, irrigation, fertilizer,
-                  soil condition, pests, diseases and farm
-                  management.
-                </div>
-              )}
-
-              {result.confidence != null &&
-                Number(result.confidence) < 50 && (
-                  <div
-                    className="result-note"
-                    style={{
-                      marginTop: "12px",
-                    }}
-                  >
-                    <strong>
-                      ⚠ Recommendation caution:
-                    </strong>{" "}
-                    This prediction has low confidence. Do not
-                    rely on this result alone for planting
-                    decisions.
-                  </div>
-                )}
-
-              <div
-                className="result-actions"
-                style={{
-                  marginTop: "18px",
-                }}
-              >
-                <button
-                  type="button"
-                  className="outline-button"
-                  onClick={handleReset}
-                >
-                  Try Another Recommendation
-                </button>
-              </div>
-            </div>
+          ) : hasReliableRecommendation ? (
+            <ReliableRecommendation
+              result={result}
+              onReset={handleReset}
+            />
           ) : (
-            <div className="service-unavailable">
-              <span className="service-icon">
-                🌱
-              </span>
-
-              <h2>
-                Recommendation unavailable
-              </h2>
-
-              <p>
-                GrowX could not generate a completed crop
-                recommendation for these conditions.
-              </p>
-
-              {result.id && (
-                <p
-                  style={{
-                    fontSize: "12px",
-                    marginTop: "4px",
-                  }}
-                >
-                  Request ID: #{result.id}
-                </p>
-              )}
-            </div>
+            <UnreliableRecommendation
+              result={result}
+              onReset={handleReset}
+            />
           )}
         </article>
       </section>

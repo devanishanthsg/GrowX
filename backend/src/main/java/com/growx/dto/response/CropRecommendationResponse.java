@@ -8,16 +8,18 @@ import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * Crop recommendation result returned to the frontend.
  *
- * Includes:
- * - ML crop prediction
- * - confidence score
- * - season verification metadata
- * - yield reference metadata
- * - explanation
+ * V2 adds reliability metadata so the frontend can distinguish:
+ * - a real recommendation
+ * - a low-confidence candidate ranking
+ * - an out-of-distribution result
+ *
+ * These V2 reliability fields are currently response-only metadata and
+ * are not persisted in the CropRecommendation entity.
  */
 @Data
 @Builder
@@ -32,118 +34,125 @@ public class CropRecommendationResponse {
     // ------------------------------------------------
 
     private BigDecimal nitrogen;
-
     private BigDecimal phosphorus;
-
     private BigDecimal potassium;
-
     private BigDecimal temperature;
-
     private BigDecimal humidity;
-
     private BigDecimal ph;
-
     private BigDecimal rainfall;
-
 
     // ------------------------------------------------
     // Crop ML prediction
     // ------------------------------------------------
 
     /**
+     * True only when the AI reliability gates approve a firm recommendation.
+     */
+    private Boolean recommendationAvailable;
+
+    /**
+     * Human-readable explanation of whether a firm recommendation was issued.
+     */
+    private String recommendationMessage;
+
+    /**
      * Recommended crop name.
-     * Example: rice, banana, maize
+     *
+     * IMPORTANT:
+     * This is null when recommendationAvailable is false.
      */
     private String recommendedCrop;
 
     /**
-     * AI confidence percentage.
-     * Range: 0 - 100
+     * Highest-ranked raw model candidate.
+     *
+     * This is NOT automatically a recommendation.
+     */
+    private CropCandidate topCandidate;
+
+    /**
+     * Top ranked model candidates for transparency.
+     */
+    private List<CropCandidate> candidates;
+
+    /**
+     * Existing alternative predictions returned by the AI service.
+     */
+    private List<CropCandidate> alternatives;
+
+    /**
+     * Highest model probability, percentage 0-100.
+     *
+     * For an OOD/uncertain case this is the top candidate's score,
+     * not the confidence of an approved recommendation.
      */
     private BigDecimal confidence;
 
+    /**
+     * Difference between the first and second ranked candidate scores,
+     * percentage points.
+     */
+    private BigDecimal confidenceMargin;
+
+    // ------------------------------------------------
+    // Reliability / domain checks
+    // ------------------------------------------------
+
+    /**
+     * Examples:
+     * CONFIDENT
+     * LOW_CONFIDENCE
+     * UNCERTAIN
+     * OUT_OF_DISTRIBUTION
+     */
+    private String reliabilityStatus;
+
+    private String reliabilityMessage;
+
+    /**
+     * Examples:
+     * IN_DISTRIBUTION
+     * OUT_OF_DISTRIBUTION
+     */
+    private String domainStatus;
+
+    /**
+     * Distance-like domain score produced by the V2 input-domain detector.
+     */
+    private BigDecimal domainScore;
+
+    /**
+     * Individual features outside the training data's observed ranges.
+     */
+    private List<String> domainOutsideFeatures;
 
     // ------------------------------------------------
     // Season information
     // ------------------------------------------------
 
-    /**
-     * Verified season when available.
-     * Example: Early Samba
-     */
     private String season;
-
-    /**
-     * Season-engine status.
-     *
-     * Examples:
-     * VERIFIED
-     * NO_MATCH
-     * NOT_VERIFIED
-     * LOCATION_REQUIRED
-     * MONTH_REQUIRED
-     */
     private String seasonStatus;
-
-    /**
-     * Human-readable season-engine explanation.
-     */
     private String seasonMessage;
-
 
     // ------------------------------------------------
     // Yield information
     // ------------------------------------------------
 
-    /**
-     * Reference yield range.
-     *
-     * Example:
-     * 4.0-6.0 tonnes/hectare
-     *
-     * This is a reference range,
-     * not a guaranteed AI yield prediction.
-     */
     private String expectedYield;
-
-    /**
-     * Yield-engine status.
-     *
-     * Examples:
-     * REFERENCE_AVAILABLE
-     * NOT_VERIFIED
-     * LOCATION_REQUIRED
-     * SEASON_REQUIRED
-     */
     private String yieldStatus;
-
-    /**
-     * Human-readable yield-engine explanation.
-     */
     private String yieldMessage;
-
 
     // ------------------------------------------------
     // Explainability
     // ------------------------------------------------
 
-    /**
-     * Explanation describing why the crop
-     * was recommended.
-     */
     private String explanation;
-
 
     // ------------------------------------------------
     // Model metadata
     // ------------------------------------------------
 
-    /**
-     * Python AI model version.
-     * Example: 1.0.0
-     */
     private String modelVersion;
-
 
     // ------------------------------------------------
     // Backend persistence status
@@ -151,12 +160,19 @@ public class CropRecommendationResponse {
 
     private RecommendationStatus status;
 
-
     // ------------------------------------------------
     // Relationships / metadata
     // ------------------------------------------------
 
     private Long farmId;
-
     private LocalDateTime createdAt;
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class CropCandidate {
+        private String crop;
+        private BigDecimal confidence;
+    }
 }
