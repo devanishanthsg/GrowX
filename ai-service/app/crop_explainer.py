@@ -1,14 +1,9 @@
-import pandas as pd
+import json
 from pathlib import Path
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-
-DATA_PATH = (
-    BASE_DIR
-    / "data"
-    / "Crop_recommendation.csv"
-)
+METADATA_PATH = BASE_DIR / "models" / "crop_model_metadata.json"
 
 FEATURES = [
     "N",
@@ -17,7 +12,7 @@ FEATURES = [
     "temperature",
     "humidity",
     "ph",
-    "rainfall"
+    "rainfall",
 ]
 
 FEATURE_LABELS = {
@@ -27,116 +22,103 @@ FEATURE_LABELS = {
     "temperature": "temperature",
     "humidity": "humidity",
     "ph": "soil pH",
-    "rainfall": "rainfall"
+    "rainfall": "rainfall",
 }
 
 
-df = pd.read_csv(DATA_PATH)
+def _load_metadata():
+    with open(METADATA_PATH, "r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def _join_labels(labels):
+    if not labels:
+        return ""
+
+    if len(labels) == 1:
+        return labels[0]
+
+    return ", ".join(labels[:-1]) + f" and {labels[-1]}"
 
 
 def generate_explanation(
     crop: str,
     values: dict,
-    confidence: float
+    confidence: float,
+    status: str | None = None,
+    alternative: str | None = None,
 ):
+    metadata = _load_metadata()
+    crop_profiles = metadata.get("class_profiles", {})
+    profile = crop_profiles.get(crop)
 
-    crop_data = df[
-        df["label"].str.lower()
-        == crop.lower()
-    ]
-
-    if crop_data.empty:
+    if not profile:
         return (
-            f"{crop.title()} was recommended "
-            f"with {confidence:.2f}% confidence "
-            "based on the supplied soil and "
-            "weather parameters."
+            f"{crop.title()} received the highest model score "
+            f"({confidence:.2f}%) for the supplied soil and weather inputs."
         )
 
-    matches = []
+    comparisons = []
 
     for feature in FEATURES:
+        stats = profile.get(feature)
 
-        user_value = float(
-            values[feature]
-        )
-
-        mean = crop_data[
-            feature
-        ].mean()
-
-        std = crop_data[
-            feature
-        ].std()
-
-        if std == 0:
+        if not stats:
             continue
 
-        z_score = abs(
-            user_value - mean
-        ) / std
+        user_value = float(values[feature])
+        mean = float(stats["mean"])
+        std = float(stats["std"])
 
-        matches.append(
-            (
-                feature,
-                z_score,
-                user_value,
-                mean
-            )
+        if std <= 1e-12:
+            continue
+
+        z_score = abs(user_value - mean) / std
+
+        comparisons.append({
+            "feature": feature,
+            "z": z_score,
+        })
+
+    comparisons.sort(key=lambda item: item["z"])
+
+    close_features = [
+        FEATURE_LABELS[item["feature"]]
+        for item in comparisons[:3]
+    ]
+
+    unusual_features = [
+        FEATURE_LABELS[item["feature"]]
+        for item in comparisons
+        if item["z"] >= 2.0
+    ][:2]
+
+    if status == "OUT_OF_DISTRIBUTION":
+        return (
+            f"{crop.title()} has the highest model score ({confidence:.2f}%), "
+            "but the complete input combination is outside the part of the "
+            "training dataset represented reliably enough for a firm recommendation."
         )
 
-    # Smaller z-score =
-    # closer to typical crop values
-    matches.sort(
-        key=lambda item: item[1]
+    if status in {"LOW_CONFIDENCE", "UNCERTAIN"} and alternative:
+        return (
+            f"{crop.title()} currently ranks first at {confidence:.2f}%, "
+            f"but {alternative.title()} is a meaningful alternative. "
+            "The recommendation should be treated as uncertain rather than final."
+        )
+
+    close_text = _join_labels(close_features)
+
+    explanation = (
+        f"{crop.title()} was recommended with a {confidence:.2f}% model score. "
+        f"Within the training data, the supplied {close_text} values are among "
+        f"the closest matches to the typical {crop.title()} profile."
     )
 
-    strongest = matches[:3]
-
-    factors = []
-
-    for (
-        feature,
-        z_score,
-        user_value,
-        mean
-    ) in strongest:
-
-        label = FEATURE_LABELS[
-            feature
-        ]
-
-        factors.append(label)
-
-    if factors:
-
-        factor_text = ", ".join(
-            factors[:-1]
-        )
-
-        if len(factors) > 1:
-            factor_text += (
-                f" and {factors[-1]}"
-            )
-        else:
-            factor_text = factors[0]
-
-        explanation = (
-            f"{crop.title()} was recommended "
-            f"with {confidence:.2f}% confidence "
-            f"because the supplied {factor_text} "
-            "values closely match the conditions "
-            f"represented by {crop.title()} "
-            "samples in the trained dataset."
-        )
-
-    else:
-
-        explanation = (
-            f"{crop.title()} was recommended "
-            f"with {confidence:.2f}% confidence "
-            "based on the supplied soil nutrient "
-            "and weather parameters."
+    if unusual_features:
+        explanation += (
+            f" The supplied {_join_labels(unusual_features)} value(s) are less "
+            f"typical for that crop profile, so they should be reviewed."
         )
 
     return explanation

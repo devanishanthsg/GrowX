@@ -80,16 +80,58 @@ public class CropMlClientImpl implements CropMlClient {
             return CropRecommendationResponse
                     .builder()
 
+                    // Recommendation gate
+                    .recommendationAvailable(
+                            ml.getRecommendationAvailable()
+                    )
+
+                    .recommendationMessage(
+                            ml.getRecommendationMessage()
+                    )
+
                     .recommendedCrop(
                             ml.getRecommendedCrop()
                     )
 
+                    .topCandidate(
+                            toCandidate(ml.getTopCandidate())
+                    )
+
+                    .candidates(
+                            toCandidates(ml.getCandidates())
+                    )
+
+                    .alternatives(
+                            toCandidates(ml.getAlternatives())
+                    )
+
                     .confidence(
-                            ml.getConfidence() == null
-                                    ? null
-                                    : BigDecimal.valueOf(
-                                            ml.getConfidence()
-                                    )
+                            toBigDecimal(ml.getConfidence())
+                    )
+
+                    .confidenceMargin(
+                            toBigDecimal(ml.getConfidenceMargin())
+                    )
+
+                    // Reliability / domain
+                    .reliabilityStatus(
+                            ml.getReliabilityStatus()
+                    )
+
+                    .reliabilityMessage(
+                            ml.getReliabilityMessage()
+                    )
+
+                    .domainStatus(
+                            ml.getDomainStatus()
+                    )
+
+                    .domainScore(
+                            toBigDecimal(ml.getDomainScore())
+                    )
+
+                    .domainOutsideFeatures(
+                            ml.getDomainOutsideFeatures()
                     )
 
                     // Season
@@ -139,8 +181,41 @@ public class CropMlClientImpl implements CropMlClient {
         }
     }
 
+    private BigDecimal toBigDecimal(Double value) {
+        return value == null
+                ? null
+                : BigDecimal.valueOf(value);
+    }
+
+    private CropRecommendationResponse.CropCandidate toCandidate(
+            Candidate candidate
+    ) {
+        if (candidate == null) {
+            return null;
+        }
+
+        return CropRecommendationResponse.CropCandidate
+                .builder()
+                .crop(candidate.getCrop())
+                .confidence(toBigDecimal(candidate.getConfidence()))
+                .build();
+    }
+
+    private List<CropRecommendationResponse.CropCandidate> toCandidates(
+            List<Candidate> candidates
+    ) {
+        if (candidates == null) {
+            return null;
+        }
+
+        return candidates
+                .stream()
+                .map(this::toCandidate)
+                .toList();
+    }
+
     // ====================================================
-    // FastAPI response structure
+    // FastAPI V2 response structure
     // ====================================================
 
     @Data
@@ -149,9 +224,26 @@ public class CropMlClientImpl implements CropMlClient {
 
         private String status;
 
+        // Recommendation gate
+        private Boolean recommendationAvailable;
+        private String recommendationMessage;
         private String recommendedCrop;
 
+        // Ranked candidates
+        private Candidate topCandidate;
+        private List<Candidate> candidates;
+        private List<Candidate> alternatives;
+
+        // Model confidence
         private Double confidence;
+        private Double confidenceMargin;
+
+        // Reliability / domain
+        private String reliabilityStatus;
+        private String reliabilityMessage;
+        private String domainStatus;
+        private Double domainScore;
+        private List<String> domainOutsideFeatures;
 
         // Season
         private String season;
@@ -166,19 +258,14 @@ public class CropMlClientImpl implements CropMlClient {
         // Explanation
         private String explanation;
 
-        // Alternative predictions
-        private List<Alternative> alternatives;
-
         // Model metadata
         private String modelVersion;
     }
 
     @Data
     @JsonIgnoreProperties(ignoreUnknown = true)
-    private static class Alternative {
-
+    private static class Candidate {
         private String crop;
-
         private Double confidence;
     }
 }

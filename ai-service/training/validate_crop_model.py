@@ -1,132 +1,54 @@
-import pandas as pd
+import json
+import joblib
 import numpy as np
+import pandas as pd
+
 from pathlib import Path
 
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import (
-    StratifiedKFold,
-    cross_val_score,
-    cross_val_predict
-)
-from sklearn.metrics import (
-    classification_report,
-    confusion_matrix
-)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DATA_PATH = BASE_DIR / "data" / "Crop_recommendation.csv"
+MODEL_PATH = BASE_DIR / "models" / "crop_model.joblib"
+METADATA_PATH = BASE_DIR / "models" / "crop_model_metadata.json"
 
-FEATURES = [
-    "N",
-    "P",
-    "K",
-    "temperature",
-    "humidity",
-    "ph",
-    "rainfall"
-]
+print("=" * 72)
+print("GrowX Crop Recommendation V2 - Reliability Validation")
+print("=" * 72)
 
-TARGET = "label"
+artifact = joblib.load(MODEL_PATH)
 
-print("=" * 65)
-print("GrowX - Crop AI Reliability Validation")
-print("=" * 65)
+if not isinstance(artifact, dict) or artifact.get("artifact_type") != "GrowXCropRecommendationV2":
+    raise RuntimeError("V2 crop model artifact not found.")
 
-df = pd.read_csv(DATA_PATH)
+with open(METADATA_PATH, "r", encoding="utf-8") as file:
+    metadata = json.load(file)
 
-X = df[FEATURES]
-y = df[TARGET]
+validation = metadata["validation"]
+reliability = metadata["reliability"]
 
-model = RandomForestClassifier(
-    n_estimators=500,
-    random_state=42,
-    n_jobs=-1,
-    class_weight="balanced"
-)
+print("\nMODEL")
+print("Version :", metadata["version"])
+print("Classes :", metadata["dataset_classes"])
+print("Rows    :", metadata["dataset_rows"])
 
-# --------------------------------------------------
-# 5-Fold Stratified Cross Validation
-# --------------------------------------------------
+print("\nCROSS-VALIDATION")
+print(f"Top-1 accuracy : {validation['top1_accuracy'] * 100:.2f}%")
+print(f"Macro F1       : {validation['macro_f1'] * 100:.2f}%")
+print(f"Top-2 accuracy : {validation['top2_accuracy'] * 100:.2f}%")
+print(f"Top-3 accuracy : {validation['top3_accuracy'] * 100:.2f}%")
+print(f"Wrong top-1    : {validation['wrong_predictions']}")
 
-cv = StratifiedKFold(
-    n_splits=5,
-    shuffle=True,
-    random_state=42
-)
-
-scores = cross_val_score(
-    model,
-    X,
-    y,
-    cv=cv,
-    scoring="accuracy",
-    n_jobs=-1
-)
-
-print("\n5-FOLD CROSS VALIDATION")
-print("-" * 40)
-
-for i, score in enumerate(scores, start=1):
-    print(
-        f"Fold {i}: "
-        f"{score:.4f} "
-        f"({score * 100:.2f}%)"
-    )
-
-print("\nAverage Accuracy:")
-print(f"{scores.mean() * 100:.2f}%")
-
-print("\nStandard Deviation:")
-print(f"{scores.std() * 100:.4f}%")
-
-# --------------------------------------------------
-# Cross-validated predictions
-# --------------------------------------------------
-
-predictions = cross_val_predict(
-    model,
-    X,
-    y,
-    cv=cv,
-    n_jobs=-1
-)
-
-print("\n" + "=" * 65)
-print("CLASSIFICATION REPORT")
-print("=" * 65)
-
+print("\nRELIABILITY GATES")
 print(
-    classification_report(
-        y,
-        predictions,
-        zero_division=0
-    )
+    "High confidence :",
+    round(reliability["high_confidence_threshold"] * 100, 2),
+    "%"
 )
-
-print("\n" + "=" * 65)
-print("CONFUSION MATRIX")
-print("=" * 65)
-
 print(
-    confusion_matrix(
-        y,
-        predictions
-    )
+    "Moderate        :",
+    round(reliability["moderate_confidence_threshold"] * 100, 2),
+    "%"
 )
+print("OOD threshold   :", round(reliability["ood_threshold"], 4))
 
-# --------------------------------------------------
-# Train final model on entire dataset
-# --------------------------------------------------
-
-print("\nTraining final Random Forest on entire dataset...")
-
-model.fit(X, y)
-
-print("Final model trained.")
-
-print("\nClasses:")
-print(model.classes_)
-
-print("\n" + "=" * 65)
-print("VALIDATION COMPLETED")
-print("=" * 65)
+print("\nSanity checks complete.")
+print("=" * 72)

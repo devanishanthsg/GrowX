@@ -21,13 +21,9 @@ import java.util.List;
 public class CropRecommendationService {
 
     private final CropRecommendationRepository cropRecommendationRepository;
-
     private final FarmRepository farmRepository;
-
     private final CropRecommendationMapper mapper;
-
     private final CropMlClient cropMlClient;
-
 
     @Transactional
     public CropRecommendationResponse requestRecommendation(
@@ -51,20 +47,13 @@ public class CropRecommendationService {
                         )
                 );
 
-
         // ------------------------------------------------
         // Extract district from farm location
-        //
-        // Example:
-        // "Coimbatore, Tamil Nadu"
-        // becomes:
-        // "Coimbatore"
         // ------------------------------------------------
 
         String district = extractDistrict(
                 farm.getLocation()
         );
-
 
         // ------------------------------------------------
         // Store recommendation request first
@@ -109,23 +98,18 @@ public class CropRecommendationService {
 
                         .build();
 
-
         entity =
                 cropRecommendationRepository.save(
                         entity
                 );
 
-
-        // ------------------------------------------------
-        // This keeps the full immediate AI response.
+        // Keep the complete immediate AI response.
         //
-        // Some AI metadata such as seasonStatus,
-        // yieldStatus and modelVersion are not stored
-        // in the database yet.
-        // ------------------------------------------------
+        // V2 reliability metadata is returned to React but is intentionally
+        // not persisted yet. Durable DB fields continue to use the existing
+        // CropRecommendation entity.
 
         CropRecommendationResponse prediction = null;
-
 
         try {
 
@@ -139,13 +123,22 @@ public class CropRecommendationService {
                             district
                     );
 
-
             // ------------------------------------------------
             // Store durable AI result fields in MySQL
             // ------------------------------------------------
+            //
+            // IMPORTANT:
+            // For LOW_CONFIDENCE / UNCERTAIN / OUT_OF_DISTRIBUTION,
+            // recommendedCrop is intentionally null. We do NOT persist the
+            // raw topCandidate as if it were an approved recommendation.
+            // ------------------------------------------------
 
             entity.setRecommendedCrop(
-                    prediction.getRecommendedCrop()
+                    Boolean.TRUE.equals(
+                            prediction.getRecommendationAvailable()
+                    )
+                            ? prediction.getRecommendedCrop()
+                            : null
             );
 
             entity.setConfidence(
@@ -168,19 +161,12 @@ public class CropRecommendationService {
                     RecommendationStatus.COMPLETED
             );
 
-
             entity =
                     cropRecommendationRepository.save(
                             entity
                     );
 
-
         } catch (Exception ex) {
-
-            // ------------------------------------------------
-            // If AI processing fails, keep the request record
-            // but mark it as FAILED.
-            // ------------------------------------------------
 
             entity.setStatus(
                     RecommendationStatus.FAILED
@@ -193,7 +179,6 @@ public class CropRecommendationService {
             throw ex;
         }
 
-
         // ------------------------------------------------
         // Build normal response from persisted entity
         // ------------------------------------------------
@@ -203,16 +188,61 @@ public class CropRecommendationService {
                         entity
                 );
 
-
         // ------------------------------------------------
-        // Add AI reliability metadata to immediate response
-        //
-        // These fields are returned to React but are not
-        // persisted in MySQL yet.
+        // Add all V2 reliability metadata to immediate response
         // ------------------------------------------------
 
         if (prediction != null) {
 
+            // Recommendation gate
+            response.setRecommendationAvailable(
+                    prediction.getRecommendationAvailable()
+            );
+
+            response.setRecommendationMessage(
+                    prediction.getRecommendationMessage()
+            );
+
+            // Ranked candidates
+            response.setTopCandidate(
+                    prediction.getTopCandidate()
+            );
+
+            response.setCandidates(
+                    prediction.getCandidates()
+            );
+
+            response.setAlternatives(
+                    prediction.getAlternatives()
+            );
+
+            // Confidence / reliability
+            response.setConfidenceMargin(
+                    prediction.getConfidenceMargin()
+            );
+
+            response.setReliabilityStatus(
+                    prediction.getReliabilityStatus()
+            );
+
+            response.setReliabilityMessage(
+                    prediction.getReliabilityMessage()
+            );
+
+            // Input-domain metadata
+            response.setDomainStatus(
+                    prediction.getDomainStatus()
+            );
+
+            response.setDomainScore(
+                    prediction.getDomainScore()
+            );
+
+            response.setDomainOutsideFeatures(
+                    prediction.getDomainOutsideFeatures()
+            );
+
+            // Season
             response.setSeasonStatus(
                     prediction.getSeasonStatus()
             );
@@ -221,6 +251,7 @@ public class CropRecommendationService {
                     prediction.getSeasonMessage()
             );
 
+            // Yield
             response.setYieldStatus(
                     prediction.getYieldStatus()
             );
@@ -229,15 +260,14 @@ public class CropRecommendationService {
                     prediction.getYieldMessage()
             );
 
+            // Model
             response.setModelVersion(
                     prediction.getModelVersion()
             );
         }
 
-
         return response;
     }
-
 
     // ====================================================
     // Recommendation history for farm
@@ -249,8 +279,6 @@ public class CropRecommendationService {
             Long farmId,
             Long userId
     ) {
-
-        // Verify farm ownership
 
         farmRepository
                 .findByIdAndOwnerId(
@@ -264,7 +292,6 @@ public class CropRecommendationService {
                         )
                 );
 
-
         return cropRecommendationRepository
                 .findByFarmIdOrderByCreatedAtDesc(
                         farmId
@@ -275,7 +302,6 @@ public class CropRecommendationService {
                 )
                 .toList();
     }
-
 
     // ====================================================
     // Get single recommendation
@@ -301,10 +327,6 @@ public class CropRecommendationService {
                                         )
                         );
 
-
-        // Verify recommendation belongs to
-        // one of the authenticated user's farms.
-
         farmRepository
                 .findByIdAndOwnerId(
                         entity.getFarm().getId(),
@@ -318,12 +340,10 @@ public class CropRecommendationService {
                                 )
                 );
 
-
         return mapper.toResponse(
                 entity
         );
     }
-
 
     // ====================================================
     // Extract district from location
@@ -340,10 +360,8 @@ public class CropRecommendationService {
             return null;
         }
 
-
         String[] parts =
                 location.split(",");
-
 
         return parts[0]
                 .trim();
