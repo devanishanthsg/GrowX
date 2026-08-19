@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../hooks/useAuth.js";
 import { getMe, updateProfile } from "../api/userApi.js";
+import { updateFarm } from "../api/farmApi.js";
 import { getInitials } from "../utils/formatters.js";
 
 function Profile() {
@@ -14,6 +15,8 @@ function Profile() {
     phone: "",
     farmName: "",
     location: "",
+    latitude: "",
+    longitude: "",
     landArea: "",
     mainCrop: "",
   });
@@ -38,6 +41,8 @@ function Profile() {
           // Farm fields from currentFarm if available
           farmName: currentFarm?.farmName ?? "",
           location: currentFarm?.location ?? "",
+          latitude: currentFarm?.latitude != null ? String(currentFarm.latitude) : "",
+          longitude: currentFarm?.longitude != null ? String(currentFarm.longitude) : "",
           landArea: currentFarm?.area != null ? String(currentFarm.area) : "",
           mainCrop: currentFarm?.mainCrop ?? "",
         });
@@ -75,6 +80,32 @@ function Profile() {
       return;
     }
 
+    const hasLatitude = profile.latitude !== "";
+    const hasLongitude = profile.longitude !== "";
+
+    if (hasLatitude !== hasLongitude) {
+      setFieldErrors({
+        latitude: "Latitude and longitude must be provided together.",
+        longitude: "Latitude and longitude must be provided together.",
+      });
+      return;
+    }
+
+    if (hasLatitude) {
+      const latitude = Number(profile.latitude);
+      const longitude = Number(profile.longitude);
+
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+        setFieldErrors({ latitude: "Latitude must be between -90 and 90." });
+        return;
+      }
+
+      if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+        setFieldErrors({ longitude: "Longitude must be between -180 and 180." });
+        return;
+      }
+    }
+
     setSaving(true);
     setSaved(false);
     setError("");
@@ -91,6 +122,14 @@ function Profile() {
         landArea: profile.landArea ? Number(profile.landArea) : null,
         mainCrop: profile.mainCrop.trim() || null,
       });
+
+      // Coordinates belong to the Farm API, not the user-profile DTO.
+      if (currentFarm && profile.latitude !== "" && profile.longitude !== "") {
+        await updateFarm(currentFarm.id, {
+          latitude: Number(profile.latitude),
+          longitude: Number(profile.longitude),
+        });
+      }
 
       setSaved(true);
       // Refresh AuthContext so Sidebar/Dashboard reflect updated name
@@ -223,6 +262,44 @@ function Profile() {
               onChange={handleChange}
               disabled={saving}
             />
+          </label>
+
+          <label>
+            Farm latitude
+            <input
+              type="number"
+              step="0.000001"
+              name="latitude"
+              id="profile-latitude"
+              value={profile.latitude}
+              onChange={handleChange}
+              placeholder="Example: 11.0168"
+              min="-90"
+              max="90"
+              disabled={saving}
+            />
+            {fieldErrors.latitude && (
+              <span className="field-error">{fieldErrors.latitude}</span>
+            )}
+          </label>
+
+          <label>
+            Farm longitude
+            <input
+              type="number"
+              step="0.000001"
+              name="longitude"
+              id="profile-longitude"
+              value={profile.longitude}
+              onChange={handleChange}
+              placeholder="Example: 76.9558"
+              min="-180"
+              max="180"
+              disabled={saving}
+            />
+            {fieldErrors.longitude && (
+              <span className="field-error">{fieldErrors.longitude}</span>
+            )}
           </label>
 
           <label>

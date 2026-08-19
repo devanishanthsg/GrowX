@@ -1,14 +1,14 @@
 package com.growx.service;
 
 import com.growx.dto.response.DashboardResponse;
-import com.growx.entity.CropRecommendation;
-import com.growx.entity.DiseaseDetection;
+import com.growx.dto.response.WeatherResponse;
+import com.growx.dto.weather.CurrentWeatherDto;
 import com.growx.entity.Farm;
+import com.growx.enums.WeatherDataStatus;
 import com.growx.exception.ResourceNotFoundException;
 import com.growx.repository.CropRecommendationRepository;
 import com.growx.repository.DiseaseDetectionRepository;
 import com.growx.repository.FarmRepository;
-import com.growx.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,32 +17,20 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Aggregates data from multiple GrowX modules into a single Dashboard response.
- * The Dashboard does not have its own database table — it pulls from existing entities.
- *
- * The service builds:
- * - Farm & farmer overview
- * - Stat placeholders (soil moisture, temperature, humidity, crop health)
- *   — these will be real values once sensor/weather integration is active
- * - AI recommendations list (from latest crop recommendations)
- * - Recent activity (from crop recommendations and disease detections)
- */
 @Service
 @RequiredArgsConstructor
 public class DashboardService {
 
     private final FarmRepository farmRepository;
-    private final UserRepository userRepository;
     private final CropRecommendationRepository cropRecommendationRepository;
     private final DiseaseDetectionRepository diseaseDetectionRepository;
+    private final WeatherService weatherService;
 
     private static final DateTimeFormatter DISPLAY_FORMATTER =
             DateTimeFormatter.ofPattern("MMM d, yyyy h:mm a");
 
     @Transactional(readOnly = true)
     public DashboardResponse getDashboard(Long userId) {
-        // Use the user's primary farm
         List<Farm> farms = farmRepository.findByOwnerId(userId);
         if (farms.isEmpty()) {
             throw new ResourceNotFoundException(
@@ -50,23 +38,41 @@ public class DashboardService {
         }
         Farm farm = farms.get(0);
 
-        // Build recent activity from DB (latest 5 events)
         List<DashboardResponse.ActivityItem> activities = buildRecentActivity(farm.getId());
-
-        // Build AI recommendation items from latest crop recommendation
         List<DashboardResponse.RecommendationItem> recommendations = buildRecommendations(farm.getId());
+
+        WeatherResponse weather = weatherService.getWeatherForFarm(farm.getId(), userId);
+        CurrentWeatherDto current = weather.getCurrent();
+        boolean weatherAvailable = weather.getMetadata() != null
+                && weather.getMetadata().getStatus() != WeatherDataStatus.UNAVAILABLE
+                && current != null;
+
+        DashboardResponse.DashboardWeatherSummary weatherSummary = DashboardResponse.DashboardWeatherSummary.builder()
+                .location(weather.getLocationName())
+                .icon(current == null ? null : current.getIcon())
+                .temperature(current == null ? null : current.getTemperature())
+                .condition(current == null ? null : current.getConditionDescription())
+                .humidity(current == null ? null : current.getHumidity())
+                .windSpeed(current == null ? null : current.getWindSpeed())
+                .precipitation(current == null ? null : current.getPrecipitation())
+                .rainProbability(current == null ? null : current.getRainProbability())
+                .overallRisk(weather.getOverallRisk())
+                .overallRiskReason(weather.getOverallRiskReason())
+                .dataStatus(weather.getMetadata() == null ? null : weather.getMetadata().getStatus())
+                .fetchedAt(weather.getMetadata() == null ? null : weather.getMetadata().getFetchedAt())
+                .dataAgeMinutes(weather.getMetadata() == null ? null : weather.getMetadata().getDataAgeMinutes())
+                .build();
 
         return DashboardResponse.builder()
                 .farmName(farm.getFarmName())
                 .location(farm.getLocation())
                 .farmerName(farm.getOwner().getName())
-                // Stat values will be populated from sensors/weather when integrated
+                // Keep sensor-only fields distinct from weather model estimates.
                 .soilMoisture(null)
-                .temperature(null)
-                .humidity(null)
+                .temperature(weatherAvailable ? current.getTemperature() : null)
+                .humidity(weatherAvailable ? current.getHumidity() : null)
                 .cropHealth(null)
-                // Weather summary will be populated from WeatherService when API key is configured
-                .weatherSummary(null)
+                .weatherSummary(weatherSummary)
                 .recommendations(recommendations)
                 .recentActivity(activities)
                 .build();
@@ -75,7 +81,6 @@ public class DashboardService {
     private List<DashboardResponse.ActivityItem> buildRecentActivity(Long farmId) {
         List<DashboardResponse.ActivityItem> items = new ArrayList<>();
 
-        // Crop recommendations
         cropRecommendationRepository.findByFarmIdOrderByCreatedAtDesc(farmId)
                 .stream()
                 .limit(3)
@@ -86,7 +91,6 @@ public class DashboardService {
                                 : "—")
                         .build()));
 
-        // Disease detections
         diseaseDetectionRepository.findByFarmIdOrderByDetectedAtDesc(farmId)
                 .stream()
                 .limit(2)
@@ -97,7 +101,6 @@ public class DashboardService {
                                 : "—")
                         .build()));
 
-        // Sort by time (descending) — simplified approach using list order from DB queries above
         return items.stream().limit(5).toList();
     }
 
@@ -118,7 +121,6 @@ public class DashboardService {
                     }
                 });
 
-        // Fallback static recommendation if no data yet
         if (items.isEmpty()) {
             items.add(DashboardResponse.RecommendationItem.builder()
                     .title("Crop Recommendation")

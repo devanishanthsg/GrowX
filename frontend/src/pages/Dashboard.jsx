@@ -144,7 +144,8 @@ function Dashboard() {
             </span>
           </div>
 
-          {dashboard?.weatherSummary ? (
+          {dashboard?.weatherSummary &&
+          dashboard.weatherSummary.dataStatus !== "UNAVAILABLE" ? (
             <>
               <div className="weather-temperature">
                 {dashboard.weatherSummary.temperature != null
@@ -157,32 +158,48 @@ function Dashboard() {
                   <span>Humidity</span>
                   <strong>
                     {dashboard.weatherSummary.humidity != null
-                      ? `${dashboard.weatherSummary.humidity}%`
+                      ? `${Math.round(dashboard.weatherSummary.humidity)}%`
                       : "—"}
                   </strong>
                 </div>
                 <div>
-                  <span>Wind</span>
+                  <span>Precipitation</span>
                   <strong>
-                    {dashboard.weatherSummary.windSpeed != null
-                      ? `${dashboard.weatherSummary.windSpeed} km/h`
+                    {dashboard.weatherSummary.precipitation != null
+                      ? `${Number(dashboard.weatherSummary.precipitation).toFixed(1)} mm`
                       : "—"}
                   </strong>
                 </div>
                 <div>
-                  <span>Rain</span>
+                  <span>Rain chance</span>
                   <strong>
                     {dashboard.weatherSummary.rainProbability != null
-                      ? `${dashboard.weatherSummary.rainProbability}%`
+                      ? `${Math.round(dashboard.weatherSummary.rainProbability)}%`
                       : "—"}
                   </strong>
                 </div>
+              </div>
+
+              <div className="dashboard-weather-risk">
+                <span>Farm weather risk</span>
+                <strong>{dashboard.weatherSummary.overallRisk ?? "—"}</strong>
+                {dashboard.weatherSummary.overallRiskReason && (
+                  <p>{dashboard.weatherSummary.overallRiskReason}</p>
+                )}
+                {dashboard.weatherSummary.dataStatus && (
+                  <small>
+                    {dashboard.weatherSummary.dataStatus}
+                    {dashboard.weatherSummary.dataAgeMinutes != null
+                      ? ` • ${dashboard.weatherSummary.dataAgeMinutes} min old`
+                      : ""}
+                  </small>
+                )}
               </div>
             </>
           ) : (
             <div className="service-unavailable" style={{ padding: "24px 0" }}>
               <span>🌦️</span>
-              <p>Weather service is being configured.</p>
+              <p>Weather is currently unavailable for this farm.</p>
             </div>
           )}
         </article>

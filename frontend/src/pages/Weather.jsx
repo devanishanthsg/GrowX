@@ -1,72 +1,102 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
-import { getWeatherForFarm } from "../api/weatherApi.js";
+import {
+  getWeatherForFarm,
+  refreshWeatherForFarm,
+} from "../api/weatherApi.js";
+import WeatherStatusBadge from "../components/weather/WeatherStatusBadge.jsx";
+import CurrentWeatherCard from "../components/weather/CurrentWeatherCard.jsx";
+import FarmActions from "../components/weather/FarmActions.jsx";
+import HourlyForecast from "../components/weather/HourlyForecast.jsx";
+import DailyForecast from "../components/weather/DailyForecast.jsx";
+import AgriculturalIndicators from "../components/weather/AgriculturalIndicators.jsx";
+import "../styles/weatherV2.css";
 
 function Weather() {
   const { currentFarm } = useAuth();
+  const navigate = useNavigate();
 
   const [weather, setWeather] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [unavailable, setUnavailable] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    if (!currentFarm) return;
-
-    async function fetchWeather() {
-      setLoading(true);
-      setUnavailable(false);
-      setError("");
-
-      try {
-        const data = await getWeatherForFarm(currentFarm.id);
-        setWeather(data);
-      } catch (err) {
-        // 500 means WeatherApiClient is not yet implemented
-        // Show a friendly unavailable state — NOT hardcoded weather data
-        if (err.status === 500 || err.status === 0) {
-          setUnavailable(true);
-        } else {
-          setError(err.message ?? "Failed to load weather.");
-        }
-      } finally {
-        setLoading(false);
-      }
+  const loadWeather = useCallback(async () => {
+    if (!currentFarm) {
+      setWeather(null);
+      setLoading(false);
+      return;
     }
 
-    fetchWeather();
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await getWeatherForFarm(currentFarm.id);
+      setWeather(data);
+    } catch (err) {
+      setError(err.message ?? "Failed to load farm weather.");
+      setWeather(null);
+    } finally {
+      setLoading(false);
+    }
   }, [currentFarm]);
 
-  if (!currentFarm && !loading) {
+  useEffect(() => {
+    loadWeather();
+  }, [loadWeather]);
+
+  async function handleRefresh() {
+    if (!currentFarm || refreshing) return;
+
+    setRefreshing(true);
+    setError("");
+
+    try {
+      const data = await refreshWeatherForFarm(currentFarm.id);
+      setWeather(data);
+    } catch (err) {
+      setError(err.message ?? "Weather refresh failed.");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  if (!currentFarm) {
     return (
-      <div>
+      <div className="weather-intelligence-page">
         <header className="page-header">
           <div>
             <p className="page-label">FARM WEATHER</p>
             <h1>Weather Intelligence</h1>
+            <p>Local weather and farm-operation guidance for your selected farm.</p>
           </div>
         </header>
-        <p className="page-error">
-          ⚠️ No farm linked to your account. Please update your Farm Profile first.
-        </p>
+
+        <section className="panel weather-v2-empty-state">
+          <span>🌦️</span>
+          <h2>No farm selected</h2>
+          <p>Add or select a farm before opening local weather intelligence.</p>
+          <button className="primary-button" onClick={() => navigate("/profile")}>
+            Open Farm Profile
+          </button>
+        </section>
       </div>
     );
   }
 
   if (loading) {
     return (
-      <div>
+      <div className="weather-intelligence-page">
         <header className="page-header">
           <div>
             <p className="page-label">FARM WEATHER</p>
             <h1>Weather Intelligence</h1>
-            <p>
-              View current conditions and plan farm activities
-              using the forecast.
-            </p>
+            <p>Loading the latest farm forecast and agricultural indicators.</p>
           </div>
         </header>
-        <div className="auth-loading" style={{ minHeight: "50vh" }}>
+        <div className="auth-loading weather-v2-loading">
           <div className="auth-loading-spinner" />
           <p>Loading weather data…</p>
         </div>
@@ -74,158 +104,99 @@ function Weather() {
     );
   }
 
-  // Weather service not yet implemented in backend
-  if (unavailable || !weather) {
-    return (
-      <div>
-        <header className="page-header">
-          <div>
-            <p className="page-label">FARM WEATHER</p>
-            <h1>Weather Intelligence</h1>
-            <p>
-              View current conditions and plan farm activities
-              using the forecast.
-            </p>
-          </div>
-        </header>
+  const metadata = weather?.metadata;
+  const unavailable = metadata?.status === "UNAVAILABLE" || !weather?.current;
+  const missingStoredCoordinates =
+    currentFarm.latitude == null || currentFarm.longitude == null;
 
-        <section className="panel">
-          <div className="service-unavailable">
-            <span className="service-icon">🌦️</span>
-            <h2>Weather service is being configured</h2>
-            <p>
-              Farm weather data is not yet available. The weather
-              intelligence service will be active soon. No action
-              is required on your part.
-            </p>
-            {currentFarm?.location && (
-              <p style={{ fontSize: "13px" }}>
-                Your farm location: <strong>{currentFarm.location}</strong>
-              </p>
-            )}
-          </div>
-        </section>
-
-        {error && <p className="page-error">{error}</p>}
-      </div>
-    );
-  }
-
-  // Weather data is available — render live data
   return (
-    <div>
-      <header className="page-header">
+    <div className="weather-intelligence-page">
+      <header className="page-header weather-v2-header">
         <div>
           <p className="page-label">FARM WEATHER</p>
           <h1>Weather Intelligence</h1>
           <p>
-            View current conditions and plan farm activities
-            using the forecast.
+            {currentFarm.farmName} • {currentFarm.location}
           </p>
+        </div>
+
+        <div className="weather-v2-header-actions">
+          <WeatherStatusBadge metadata={metadata} />
+          <button
+            type="button"
+            className="outline-button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            {refreshing ? "Refreshing…" : "Refresh Weather"}
+          </button>
         </div>
       </header>
 
-      <section className="current-weather-card">
-        <div>
-          <p>{weather.location ?? currentFarm?.location ?? "—"}</p>
+      {error && <p className="page-error">{error}</p>}
 
-          <h2>
-            {weather.temperature != null
-              ? `${weather.temperature}°C`
-              : "—"}
-          </h2>
-
-          <h3>{weather.condition ?? "—"}</h3>
-
-          {weather.feelsLike != null && (
-            <span>Feels like {weather.feelsLike}°C</span>
-          )}
-        </div>
-
-        <div className="current-weather-icon">
-          {weather.icon ?? "🌡️"}
-        </div>
-
-        <div className="current-weather-details">
+      {missingStoredCoordinates && (
+        <section className="weather-v2-coordinate-warning">
           <div>
-            <span>Humidity</span>
-            <strong>
-              {weather.humidity != null ? `${weather.humidity}%` : "—"}
-            </strong>
+            <strong>Using location-name weather fallback</strong>
+            <p>
+              Exact farm coordinates are not saved. GrowX can estimate the location,
+              but latitude and longitude provide more precise local weather lookup.
+            </p>
           </div>
-
-          <div>
-            <span>Wind speed</span>
-            <strong>
-              {weather.windSpeed != null
-                ? `${weather.windSpeed} km/h`
-                : "—"}
-            </strong>
-          </div>
-
-          <div>
-            <span>Rain probability</span>
-            <strong>
-              {weather.rainProbability != null
-                ? `${weather.rainProbability}%`
-                : "—"}
-            </strong>
-          </div>
-
-          {weather.uvIndex != null && (
-            <div>
-              <span>UV index</span>
-              <strong>
-                {weather.uvIndex} {weather.uvCategory ?? ""}
-              </strong>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {Array.isArray(weather.forecast) && weather.forecast.length > 0 && (
-        <section className="panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Five-day forecast</h2>
-              <p>Expected weather conditions for your farm</p>
-            </div>
-          </div>
-
-          <div className="forecast-grid">
-            {weather.forecast.map((item, index) => (
-              <article
-                className="forecast-card"
-                key={item.day ?? index}
-              >
-                <strong>{item.day ?? "—"}</strong>
-                <span className="forecast-icon">
-                  {item.icon ?? "🌡️"}
-                </span>
-                <h3>
-                  {item.temperature != null
-                    ? `${item.temperature}°C`
-                    : "—"}
-                </h3>
-                <p>{item.condition ?? "—"}</p>
-                {item.rainProbability != null && (
-                  <span>Rain: {item.rainProbability}%</span>
-                )}
-              </article>
-            ))}
-          </div>
+          <button className="outline-button" onClick={() => navigate("/profile")}>
+            Add Coordinates
+          </button>
         </section>
       )}
 
-      {weather.alertMessage && (
-        <section className="weather-alert">
-          <span>🌧️</span>
-          <div>
-            <strong>Farm weather alert</strong>
-            <p>{weather.alertMessage}</p>
-          </div>
-        </section>
+      {Array.isArray(weather?.warnings) && weather.warnings.length > 0 && (
+        <div className="weather-v2-warnings">
+          {weather.warnings.map((warning, index) => (
+            <p key={`${warning}-${index}`}>⚠️ {warning}</p>
+          ))}
+        </div>
       )}
+
+      {unavailable ? (
+        <section className="panel weather-v2-empty-state">
+          <span>🌦️</span>
+          <h2>Weather data unavailable</h2>
+          <p>
+            GrowX could not obtain live or cached weather for this farm. No example
+            or hardcoded weather values are shown.
+          </p>
+          <button className="outline-button" onClick={handleRefresh} disabled={refreshing}>
+            {refreshing ? "Trying again…" : "Try Again"}
+          </button>
+        </section>
+      ) : (
+        <>
+          <CurrentWeatherCard weather={weather} />
+
+          <FarmActions
+            advisories={weather.advisories ?? []}
+            overallRisk={weather.overallRisk}
+            overallRiskReason={weather.overallRiskReason}
+          />
+
+          <HourlyForecast hourly={weather.hourly ?? []} />
+          <DailyForecast daily={weather.daily ?? []} />
+          <AgriculturalIndicators agriculture={weather.agriculture} />
+        </>
+      )}
+
+      <footer className="weather-v2-source-footer">
+        <p>
+          Weather data: <strong>{metadata?.provider ?? "Unavailable"}</strong>
+        </p>
+        {metadata?.fetchedAt && (
+          <p>
+            Provider fetch: {new Date(metadata.fetchedAt).toLocaleString()}
+          </p>
+        )}
+        <p>Forecast values are model-based estimates and may change.</p>
+      </footer>
     </div>
   );
 }
