@@ -1,5 +1,13 @@
 package com.growx.dto.response;
 
+import com.growx.dto.weather.AgriculturalWeatherDto;
+import com.growx.dto.weather.CurrentWeatherDto;
+import com.growx.dto.weather.DailyWeatherDto;
+import com.growx.dto.weather.HourlyWeatherDto;
+import com.growx.dto.weather.WeatherAdvisoryDto;
+import com.growx.dto.weather.WeatherFeatureHintsDto;
+import com.growx.dto.weather.WeatherMetadataDto;
+import com.growx.enums.RiskLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -8,66 +16,32 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 /**
- * Weather data response for the Weather page and Dashboard weather summary.
- * Designed to support any external weather API (e.g. OpenWeatherMap).
- * API keys and URLs must come from environment variables, never hardcoded.
+ * Provider-neutral GrowX Agro Weather Intelligence response.
+ * External-provider JSON never leaks past the WeatherApiClient layer.
  */
 @Data
-@Builder
+@Builder(toBuilder = true)
 @NoArgsConstructor
 @AllArgsConstructor
 public class WeatherResponse {
+    private Long farmId;
+    private String farmName;
+    private String locationName;
+    private Double latitude;
+    private Double longitude;
+    private String timezone;
+    private String coordinateSource;
 
-    // ── Current conditions ────────────────────────────────────────────────────
+    private CurrentWeatherDto current;
+    private List<HourlyWeatherDto> hourly;
+    private List<DailyWeatherDto> daily;
+    private AgriculturalWeatherDto agriculture;
+    private List<WeatherAdvisoryDto> advisories;
 
-    private String location;
+    private RiskLevel overallRisk;
+    private String overallRiskReason;
 
-    /** Temperature in Celsius */
-    private Double temperature;
-
-    /** Feels-like temperature in Celsius */
-    private Double feelsLike;
-
-    /** Weather condition label, e.g. "Sunny", "Partly Cloudy" */
-    private String condition;
-
-    /** Emoji icon representing the condition */
-    private String icon;
-
-    /** Humidity percentage */
-    private Double humidity;
-
-    /** Wind speed in km/h */
-    private Double windSpeed;
-
-    /** Rain probability percentage (0–100) */
-    private Double rainProbability;
-
-    /** UV index value */
-    private Double uvIndex;
-
-    /** Human-readable UV category, e.g. "Moderate" */
-    private String uvCategory;
-
-    // ── 5-day forecast ────────────────────────────────────────────────────────
-
-    private List<ForecastDay> forecast;
-
-    // ── Farm weather alert ────────────────────────────────────────────────────
-
-    private String alertMessage;
-
-    // ── Inner value types ──────────────────────────────────────────────────────
-
-    @Data
-    @Builder
-    @NoArgsConstructor
-    @AllArgsConstructor
-    public static class ForecastDay {
-        private String day;
-        private String icon;
-        private String condition;
-        private Double temperature;
-        private Double rainProbability;
-    }
+    private WeatherFeatureHintsDto cropFeatureHints;
+    private WeatherMetadataDto metadata;
+    private List<String> warnings;
 }

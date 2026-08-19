@@ -1,57 +1,54 @@
 package com.growx.dto.response;
 
+import com.growx.enums.RiskLevel;
+import com.growx.enums.WeatherDataStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 
-/**
- * Dashboard aggregated data response.
- * Powers the main Dashboard page which shows farm stats,
- * a weather summary, AI recommendations, and recent activity.
- */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class DashboardResponse {
 
-    // ── Farm Overview ─────────────────────────────────────────────────────────
-
     private String farmName;
     private String location;
     private String farmerName;
 
-    // ── Stat Cards ────────────────────────────────────────────────────────────
-
-    /** Soil moisture percentage — sourced from sensors or entered manually */
+    /** Sensor value only; weather-model soil moisture is never represented as a physical sensor reading. */
     private Double soilMoisture;
-
-    /** Current temperature in Celsius */
     private Double temperature;
-
-    /** Humidity percentage */
     private Double humidity;
-
-    /** Crop health score 0–100 */
     private Double cropHealth;
 
-    // ── Weather Summary ───────────────────────────────────────────────────────
-
-    private WeatherResponse weatherSummary;
-
-    // ── AI Recommendations ────────────────────────────────────────────────────
-
-    /** Short advisory items displayed in the "AI recommendations" panel */
+    private DashboardWeatherSummary weatherSummary;
     private List<RecommendationItem> recommendations;
-
-    // ── Recent Activity ───────────────────────────────────────────────────────
-
     private List<ActivityItem> recentActivity;
 
-    // ── Inner classes (avoids creating separate files for simple value types) ─
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DashboardWeatherSummary {
+        private String location;
+        private String icon;
+        private Double temperature;
+        private String condition;
+        private Double humidity;
+        private Double windSpeed;
+        private Double precipitation;
+        private Double rainProbability;
+        private RiskLevel overallRisk;
+        private String overallRiskReason;
+        private WeatherDataStatus dataStatus;
+        private OffsetDateTime fetchedAt;
+        private Long dataAgeMinutes;
+    }
 
     @Data
     @Builder

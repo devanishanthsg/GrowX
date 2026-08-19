@@ -3,33 +3,14 @@ package com.growx.client;
 import com.growx.dto.response.WeatherResponse;
 
 /**
- * Abstraction for the external weather data provider.
- *
- * This interface allows swapping the underlying weather API (e.g. OpenWeatherMap,
- * WeatherAPI.com) without changing the service or controller layer.
- *
- * Implementation must:
- * - Read API keys from environment variables / application properties
- * - Never hardcode keys or URLs in the implementation class
- * - Handle API errors gracefully and translate them to GrowX exceptions
+ * Provider abstraction for GrowX weather data. Implementations normalize
+ * provider-specific JSON into WeatherResponse before returning it.
  */
 public interface WeatherApiClient {
 
-    /**
-     * Fetches current weather and a 5-day forecast for the given location name.
-     *
-     * @param location human-readable location string (e.g., "Coimbatore, Tamil Nadu")
-     * @return WeatherResponse populated from the external API
-     */
+    /** Location-name lookup is a fallback when stored farm coordinates are unavailable. */
     WeatherResponse getWeatherByLocation(String location);
 
-    /**
-     * Fetches current weather and a 5-day forecast using GPS coordinates.
-     * Preferred when a farm has stored latitude/longitude.
-     *
-     * @param latitude  farm latitude
-     * @param longitude farm longitude
-     * @return WeatherResponse populated from the external API
-     */
+    /** Preferred lookup using the farm's WGS84 coordinates. */
     WeatherResponse getWeatherByCoordinates(double latitude, double longitude);
 }

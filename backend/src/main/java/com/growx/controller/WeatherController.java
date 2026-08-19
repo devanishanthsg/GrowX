@@ -7,12 +7,15 @@ import com.growx.service.WeatherService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Weather endpoints — all require a valid JWT.
- *
- * GET /api/weather/farm/{farmId} → get current weather and forecast for the farm's location
+ * Authenticated farm-weather endpoints.
+ * Farm ownership is re-checked inside WeatherService for every request.
  */
 @RestController
 @RequestMapping("/api/weather")
@@ -26,7 +29,19 @@ public class WeatherController {
             @PathVariable Long farmId,
             @AuthenticationPrincipal UserPrincipal principal
     ) {
-        WeatherResponse response = weatherService.getWeatherForFarm(farmId, principal.getId());
-        return ResponseEntity.ok(ApiResponse.success(response));
+        return ResponseEntity.ok(ApiResponse.success(
+                weatherService.getWeatherForFarm(farmId, principal.getId())
+        ));
+    }
+
+    @PostMapping("/farm/{farmId}/refresh")
+    public ResponseEntity<ApiResponse<WeatherResponse>> refreshWeatherForFarm(
+            @PathVariable Long farmId,
+            @AuthenticationPrincipal UserPrincipal principal
+    ) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Weather refresh processed.",
+                weatherService.refreshWeatherForFarm(farmId, principal.getId())
+        ));
     }
 }

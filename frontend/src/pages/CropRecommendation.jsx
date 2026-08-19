@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useAuth } from "../hooks/useAuth.js";
 import { submitRecommendation } from "../api/cropApi.js";
+import { getWeatherForFarm } from "../api/weatherApi.js";
 import { validateCropForm } from "../utils/validators.js";
 import "../styles/cropRecommendationV2.css";
+import "../styles/weatherV2.css";
 
 const initialForm = {
   nitrogen: "",
@@ -479,6 +481,8 @@ function CropRecommendation() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState("");
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherHelperMessage, setWeatherHelperMessage] = useState("");
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -496,6 +500,59 @@ function CropRecommendation() {
     }
 
     setApiError("");
+  }
+
+  async function handleUseFarmWeather() {
+    if (!currentFarm || weatherLoading) return;
+
+    setWeatherLoading(true);
+    setWeatherHelperMessage("");
+    setApiError("");
+
+    try {
+      const weather = await getWeatherForFarm(currentFarm.id);
+      const hints = weather?.cropFeatureHints;
+
+      if (!hints || (hints.temperature == null && hints.humidity == null)) {
+        setApiError(
+          "Farm weather is available, but no crop-compatible temperature or humidity helper values could be derived.",
+        );
+        return;
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        temperature:
+          hints.temperature != null
+            ? String(Number(hints.temperature).toFixed(2))
+            : prev.temperature,
+        humidity:
+          hints.humidity != null
+            ? String(Number(hints.humidity).toFixed(2))
+            : prev.humidity,
+        // Rainfall intentionally remains manual. The crop dataset does not
+        // document the accumulation period represented by its rainfall feature.
+        rainfall: prev.rainfall,
+      }));
+
+      setFieldErrors((prev) => ({
+        ...prev,
+        temperature: "",
+        humidity: "",
+      }));
+
+      setWeatherHelperMessage(
+        `${hints.temperatureSource ?? "Weather temperature"}; ${
+          hints.humiditySource ?? "weather humidity"
+        }. ${hints.rainfallMessage ?? "Rainfall remains manual."}`,
+      );
+    } catch (error) {
+      setApiError(
+        error.message ?? "Unable to load farm weather for crop inputs.",
+      );
+    } finally {
+      setWeatherLoading(false);
+    }
   }
 
   async function handleSubmit(event) {
@@ -552,6 +609,7 @@ function CropRecommendation() {
     setFieldErrors({});
     setResult(null);
     setApiError("");
+    setWeatherHelperMessage("");
   }
 
   function FieldError({ name }) {
@@ -630,6 +688,32 @@ function CropRecommendation() {
                 </div>
               )}
             </div>
+          )}
+
+          {currentFarm && (
+            <div className="crop-weather-helper">
+              <div>
+                <strong>Use Farm Weather</strong>
+                <small>
+                  Fills a 7-day representative temperature and humidity only.
+                  Rainfall stays manual until the crop dataset rainfall period is verified.
+                </small>
+              </div>
+              <button
+                type="button"
+                className="outline-button"
+                onClick={handleUseFarmWeather}
+                disabled={loading || weatherLoading}
+              >
+                {weatherLoading ? "Loading weather…" : "Use Farm Weather"}
+              </button>
+            </div>
+          )}
+
+          {weatherHelperMessage && (
+            <p className="crop-weather-helper-message">
+              {weatherHelperMessage}
+            </p>
           )}
 
           <div className="form-grid">
